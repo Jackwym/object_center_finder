@@ -9,7 +9,7 @@ TARGET = (255, 0, 0)
 #importance of surrounding searched pixels when calculating error
 DISTANCE_BIAS = 0.1
 #radius searched around each pixel adding to its potential error
-DISTANCE = 3
+DISTANCE = 30
 
 
 def main():
@@ -56,12 +56,13 @@ def calculate_pixel_error(p, px, py, dist, bias_array, width, height):
                                                 DISTANCE_BIAS * ((x - px) ** 2 + (y - py) ** 2) / dist)
             sum_error += individual_error
 
+            #if the pixel is around the edge, add more error
             if (x  + dist > width or x - dist < 0):
-                # print(x)
-                sum_error += individual_error
+                #sum_error += individual_error
+                sum_error += 100000
             if (y + dist > height or y - dist < 0):
-                # print(y)
-                sum_error += individual_error
+                #sum_error += individual_error
+                sum_error += 100000
     return sum_error
 
 
@@ -89,30 +90,11 @@ def make_error_map(image, dist, bias_array):
     max_error = 0 #includes center
     pixel_error_array = [[0 for _ in range(image.width)] for _ in range(image.height)]
 
-    #find max error
-    # for x in range(max(int(-1 * image.width / 2), -dist), min(int(image.width / 2) - 1, dist)):
-    #     for y in range (max(int(-1 * image.height / 2), -dist), min(int(image.height / 2) - 1, dist)):
-    # for x in range(max(0, int(image.width / 2) - dist), min(int(image.width), int(image.width / 2) + dist + 1)):
-    #     for y in range (max(0, int(image.height / 2) - dist), min(int(image.height), int(image.height / 2) + dist + 1)):
-    #         if (math.sqrt((x - image.width / 2) ** 2 + (y - image.height / 2) ** 2) > dist):
-    #             print("skipped " + str(x) + ", " + str(y))
-    #             continue
-    #         max_error += 765 * DISTANCE_BIAS * ((x - int(image.width / 2)) ** 2 + (y - int(image.height / 2)) ** 2) / dist
-    #         if ((image.width / 2) + x > image.width or -1 * (image.width / 2) - x < 0):
-    #             max_error += 765 * DISTANCE_BIAS * ((x - int(image.width / 2)) ** 2 + (y - int(image.height / 2)) ** 2) / dist
-    #         if ((image.height / 2) + y > image.height or -1 * (image.height / 2) - y < 0):
-    #             max_error += 765 * DISTANCE_BIAS * ((x - int(image.width / 2)) ** 2 + (y - int(image.height / 2)) ** 2) / dist
-    # print(max_error)
-
     pixel_error = 0
-    #find error / divide by max
-    # for x in range(int(-1 * image.width / 2), int(image.width / 2)):
-    #     print("current row: " + str(x))
-    #     for y in range (int(-1 * image.height / 2), int(image.height / 2)):
+    #find error of each pixel individually
     for x in range(0, image.width):
         print("current row: " + str(x))
         for y in range (0, image.height):
-            #print("current column: " + str(y))
             if (x < 10 and y < 10): print(calculate_pixel_error(pixels, x, y, dist, bias_array, image.width, image.height))
             # pixel_error = int(calculate_pixel_error(pixels, x, y, dist, bias_array, image.width, image.height) / max_error * 255)
             pixel_error = int(calculate_pixel_error(pixels, x, y, dist, bias_array, image.width, image.height))
@@ -170,26 +152,11 @@ if __name__ == "__main__":
 
 """
 Bugs:
-max error is incorrectly calculated
-border error incorrectly (more noticable in image 1)
-error divided into 4 distinct preferences (?)
+whenever pixels near the edge are evaluated, the distortion effect reflects over the axis
 check for when a loop should be incremented by 1 at the end
 
 to find max error perform the same claculation as the center pixel, but pretend it is as far from the target as possible
 
 alright pal ingnore the idiot above me, we arent goign to not calculate max error and insted, after finding each
 pixels error, sort through and find the one with the most, and divide the rest by that
-
-code to test error calculating without looping through entire image:
-for x in range(px - dist, px + dist):
-        for y in range (py - dist, py + dist):
-            if (math.sqrt((x - px) ** 2 + (y - py) ** 2) > dist): continue
-            try:
-                individual_error = abs(bias_array[x][y] * (abs(p[x, y][0] - TARGET[0]) +
-                                                abs(p[x, y][0] - TARGET[1]) +
-                                                abs(p[x, y][0] - TARGET[2])) *
-                                                DISTANCE_BIAS * ((x - px) ** 2 + (y - py) ** 2) / dist)
-                sum_error += individual_error
-            except:
-                print("edge")
 """
