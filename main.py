@@ -37,7 +37,7 @@ def calculate_pixel_error(p, px, py, dist, bias_array, width, height):
     :param height: height of the imaeg
     :return: returns an arbitrary value (error) that, when compared to other pixels,
     demonstrates how "red" a pixel is. a higher number indicates that it has high
-    error, and is fer from the target RGB values
+    error, and is far from the target RGB values
     """
     sum_error = 0
     individual_error = 0
@@ -164,7 +164,9 @@ if __name__ == "__main__":
 """
 Bugs:
 whenever pixels near the edge are evaluated, the distortion effect reflects over the axis
+    (edged are over-accounted for)
 check for when a loop should be incremented by 1 at the end
+find_target_pixel does not currently work
 
 Optimization:
 utilize numpy matrices rather than for loops
