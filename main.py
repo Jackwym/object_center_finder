@@ -2,14 +2,14 @@ from PIL import Image
 import math
 import numpy as np
 
-#bias of 0 has no distortion, and 1 of maximum distortion
-DISTORTION_BIAS = 0.1
+#bias of 1 has no distortion, and 0 of maximum distortion
+DISTORTION_BIAS = 0.9
 #desired target RGB
 TARGET = (255, 0, 0)
 #importance of surrounding searched pixels when calculating error
 DISTANCE_BIAS = 0.1
 #radius searched around each pixel adding to its potential error
-DISTANCE = 3
+DISTANCE = 10
 
 
 def main():
@@ -58,12 +58,13 @@ def calculate_pixel_error(p, px, py, dist, bias_array, width, height):
             sum_error += individual_error
 
             #if the pixel is around the edge, add more error
-            if (x  + dist > width or x - dist < 0):
+            if (px + (px - x) > width or px - (x - px) < 0):
                 sum_error += individual_error
-                #sum_error += 100000
-            if (y + dist > height or y - dist < 0):
+            if (py + (py - y) > height or py - (y - py) < 0):
                 sum_error += individual_error
-                #sum_error += 100000
+            if ((px + (px - x) > width or px - (x - px) < 0) and (py + (py - y) > height or py - (y - py) < 0)):
+                sum_error += individual_error
+
     return sum_error
 
 
@@ -120,21 +121,24 @@ def make_error_map(image, dist, bias_array):
             pixel_error = int(calculate_pixel_error(pixels, x, y, dist, bias_array, image.width, image.height))
             pixel_error_array[x].insert(y, pixel_error)
 
-    #find the pixel with the most error and set it as the max
+    #find the pixel with the most / least error and set it as the max / min
+    min_error = pixel_error_array[0][0]
     max_error = pixel_error_array[0][0]
     for x in range(0, image.width):
         for y in range (0, image.height):
             if (pixel_error_array[x][y] > max_error):
                 max_error = pixel_error_array[x][y]
+            if (pixel_error_array[x][y] < min_error):
+                min_error = pixel_error_array[x][y]
 
     #divide each error by the max and multiply by 255 in order to display the error as an image
     for x in range(0, int(image.width)):
         for y in range (0, int(image.height)):
-            pixels[x, y] = (int(pixel_error_array[x][y] / max_error * 255),
-                            int(pixel_error_array[x][y] / max_error * 255),
-                            int(pixel_error_array[x][y] / max_error * 255))
+            pixels[x, y] = (int((pixel_error_array[x][y] - min_error) / (max_error - min_error) * 255),
+                            int((pixel_error_array[x][y] - min_error) / (max_error - min_error) * 255),
+                            int((pixel_error_array[x][y] - min_error) / (max_error - min_error) * 255))
 
-    image.save("results/error_map3.jpg")
+    image.save("results/error_map6.jpg")
     image.show()
 
 
@@ -152,8 +156,12 @@ def make_bias_array(image, bias):
 
     for x in range(image.width):
         for y in range (image.height):
-            bias_array[x].insert(y, 0.5 * (((-math.sin(abs(x - (image.width / 2)) / image.height * math.pi / 2 * bias + math.pi / 2 - math.pi / 2 * bias)) + 1) +
-                                            ((-math.sin(abs(y - (image.height / 2)) / image.height * math.pi / 2 * bias + math.pi / 2 - math.pi / 2 * bias)) + 1)))
+            # bias_array[x].insert(y, 0.5 * (((-math.sin(abs(x - (image.width / 2)) / image.height * math.pi / 2 * bias + math.pi / 2 - math.pi / 2 * bias)) + 1) +
+            #                                 ((-math.sin(abs(y - (image.height / 2)) / image.height * math.pi / 2 * bias + math.pi / 2 - math.pi / 2 * bias)) + 1)))
+            bias_array[x].insert(y, 0.5 * (
+                -(((1 - bias) / ((image.width / 2) ** 2)) * ((x - image.width / 2) ** 2) - 1) -
+                (((1 - bias) / ((image.height / 2) ** 2)) * ((y - image.height / 2) ** 2) - 1)
+            ))
 
     return bias_array
 
@@ -167,6 +175,8 @@ whenever pixels near the edge are evaluated, the distortion effect reflects over
     (edged are over-accounted for)
 check for when a loop should be incremented by 1 at the end
 find_target_pixel does not currently work
+no distortion bias leans to "sharp edges" meaning the radius saerched may be less (?)
+    solution: add a check for distortion
 
 Optimization:
 utilize numpy matrices rather than for loops
