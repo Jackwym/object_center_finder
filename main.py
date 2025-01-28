@@ -1,6 +1,7 @@
 from PIL import Image
 import math
 import numpy as np
+import time
 
 #bias of 1 has no distortion, and 0 of maximum distortion
 DISTORTION_BIAS = 0.9
@@ -19,7 +20,10 @@ def main():
     bias_array = make_bias_array(image, DISTORTION_BIAS)
     pixels = image.load()
     #make_error_map(image, DISTANCE, bias_array)
-    print(find_target_pixel(image, pixels, image.width, image.height, 0, 0, bias_array))
+    t1 = time.time()
+    print(t1)
+    print(find_target_pixel(image, pixels, image.width, image.height, 0, 0, bias_array, [0, 0]))
+    print(time.time() - t1)
     print("Done")
 
 
@@ -57,9 +61,9 @@ def calculate_pixel_error(p, px, py, x_dist, y_dist, bias_array, width, height):
             elif (y > height - 1):
                 surrounding_y = width - 1
             if (px == x and py == y):
-                individual_error = abs((abs(p[x, y][0] - TARGET[0]) +
-                                            abs(p[x, y][1] - TARGET[1]) +
-                                            abs(p[x, y][2] - TARGET[2])))
+                individual_error = abs((abs(p[surrounding_x, surrounding_y][0] - TARGET[0]) +
+                                            abs(p[surrounding_x, surrounding_y][1] - TARGET[1]) +
+                                            abs(p[surrounding_x, surrounding_y][2] - TARGET[2])))
             else:
                 individual_error = abs(bias_array[surrounding_x][surrounding_y] *
                                                 (abs(p[surrounding_x, surrounding_y][0] - TARGET[0]) +
@@ -71,7 +75,7 @@ def calculate_pixel_error(p, px, py, x_dist, y_dist, bias_array, width, height):
     return sum_error
 
 
-def find_target_pixel(image, pixels, width, height, least_x, least_y, bias_array):
+def find_target_pixel(image, pixels, width, height, least_x, least_y, bias_array, prev_pixel):
     """
     find_target_pixel finds the pixel most denseley populated with the target RGB
     through an algorithm closely related to a binary search
@@ -86,7 +90,7 @@ def find_target_pixel(image, pixels, width, height, least_x, least_y, bias_array
     :param bias_array: list of the bias values of the image due to lens distortion
     :return: returns the pixel coordinate most densely populated with the target RGB
     """
-    if (width == 0 and height == 0): return (least_x, least_y)
+    #if (width == 0 and height == 0): return (least_x, least_y)
     left_x = least_x + int(width / 4)
     right_x = least_x + int(width * 3 / 4)
     top_y = least_y + int(height / 4)
@@ -99,7 +103,8 @@ def find_target_pixel(image, pixels, width, height, least_x, least_y, bias_array
         least_error_location[0] = 1
     if (top_left_error > bottom_left_error):
         least_error_location[1] = 1
-    return find_target_pixel(image, pixels, int(width / 4), int(height / 4), int(least_x + width / 2 * least_error_location[0]), int(least_y + height / 2 * least_error_location[1]), bias_array)
+    if (prev_pixel[0] == least_error_location[0] and prev_pixel[0] == least_error_location[0]): return (least_x, least_y)
+    return find_target_pixel(image, pixels, int(width), int(height), int(least_x + width / 2 * least_error_location[0]), int(least_y + height / 2 * least_error_location[1]), bias_array, least_error_location)
 
 
 def make_error_map(image, dist, bias_array):
