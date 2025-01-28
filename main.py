@@ -9,7 +9,7 @@ TARGET = (255, 0, 0)
 #importance of surrounding searched pixels when calculating error
 DISTANCE_BIAS = 0.1
 #radius searched around each pixel adding to its potential error
-DISTANCE = 20
+DISTANCE = 5
 
 
 def main():
@@ -18,12 +18,12 @@ def main():
 
     bias_array = make_bias_array(image, DISTORTION_BIAS)
     pixels = image.load()
-    make_error_map(image, DISTANCE, bias_array)
-    #find_target_pixel(image, pixels, image.width, image.height, 0, 0, bias_array)
+    #make_error_map(image, DISTANCE, bias_array)
+    print(find_target_pixel(image, pixels, image.width, image.height, 0, 0, bias_array))
     print("Done")
 
 
-def calculate_pixel_error(p, px, py, dist, bias_array, width, height):
+def calculate_pixel_error(p, px, py, x_dist, y_dist, bias_array, width, height):
     """
     calculate_pixel_error finds how far from the target RGB a given pixel is,
     accounting for the error of the surrounding pixels and distortion of the lens
@@ -44,8 +44,8 @@ def calculate_pixel_error(p, px, py, dist, bias_array, width, height):
 
     surrounding_x = 0
     surrounding_y = 0
-    for x in range(px - dist, px + dist):
-        for y in range (py - dist, py + dist):
+    for x in range(px - x_dist, px + x_dist):
+        for y in range (py - y_dist, py + y_dist):
             surrounding_x = x
             surrounding_y = y
             if (x < 0):
@@ -58,14 +58,14 @@ def calculate_pixel_error(p, px, py, dist, bias_array, width, height):
                 surrounding_y = width - 1
             if (px == x and py == y):
                 individual_error = abs((abs(p[x, y][0] - TARGET[0]) +
-                                            abs(p[x, y][0] - TARGET[1]) +
-                                            abs(p[x, y][0] - TARGET[2])))
+                                            abs(p[x, y][1] - TARGET[1]) +
+                                            abs(p[x, y][2] - TARGET[2])))
             else:
                 individual_error = abs(bias_array[surrounding_x][surrounding_y] *
                                                 (abs(p[surrounding_x, surrounding_y][0] - TARGET[0]) +
-                                                abs(p[surrounding_x, surrounding_y][0] - TARGET[1]) +
-                                                abs(p[surrounding_x, surrounding_y][0] - TARGET[2])) *
-                                                DISTANCE_BIAS * ((x - px) ** 2 + (y - py) ** 2) / dist)
+                                                abs(p[surrounding_x, surrounding_y][1] - TARGET[1]) +
+                                                abs(p[surrounding_x, surrounding_y][2] - TARGET[2])) *
+                                                DISTANCE_BIAS * ((x - px) ** 2 + (y - py) ** 2) / x_dist)
             sum_error += individual_error
 
     return sum_error
@@ -86,21 +86,20 @@ def find_target_pixel(image, pixels, width, height, least_x, least_y, bias_array
     :param bias_array: list of the bias values of the image due to lens distortion
     :return: returns the pixel coordinate most densely populated with the target RGB
     """
-    if (width == 1 and height == 1): return (least_x, least_y)
-    left_x = least_x + int(-1 * width / 4)
-    right_x = least_x + int( width / 4)
-    top_y = least_y + int(-1 * height / 4)
-    bottom_y = least_y + int(height / 4)
-    least_error_location = (0, 0)
-    top_left_error = calculate_pixel_error(pixels, left_x, top_y, math.sqrt(width ** 2 + height **  2) / 4, bias_array, image.width, image.height)
-    top_right_error = calculate_pixel_error(pixels, right_x, top_y, math.sqrt(width ** 2 + height **  2) / 4, bias_array, image.width, image.height)
-    bottom_left_error = calculate_pixel_error(pixels, left_x, bottom_y, math.sqrt(width ** 2 + height **  2) / 4, bias_array, image.width, image.height)
+    if (width == 0 and height == 0): return (least_x, least_y)
+    left_x = least_x + int(width / 4)
+    right_x = least_x + int(width * 3 / 4)
+    top_y = least_y + int(height / 4)
+    bottom_y = least_y + int(height * 3 / 4)
+    least_error_location = [0, 0]
+    top_left_error = calculate_pixel_error(pixels, int(left_x), int(top_y), int(width / 2), int(height / 2), bias_array, image.width, image.height)
+    top_right_error = calculate_pixel_error(pixels, int(right_x), int(top_y), int(width / 2), int(height / 2), bias_array, image.width, image.height)
+    bottom_left_error = calculate_pixel_error(pixels, int(left_x), int(bottom_y), int(width / 2), int(height / 2), bias_array, image.width, image.height)
     if (top_left_error > top_right_error):
         least_error_location[0] = 1
     if (top_left_error > bottom_left_error):
         least_error_location[1] = 1
-    find_target_pixel(image, pixels, width / 4, height / 4, least_x + width / 2 * least_error_location[0], least_y + height / 2 * least_error_location[1], bias_array)
-    return (0, 0)
+    return find_target_pixel(image, pixels, int(width / 4), int(height / 4), int(least_x + width / 2 * least_error_location[0]), int(least_y + height / 2 * least_error_location[1]), bias_array)
 
 
 def make_error_map(image, dist, bias_array):
@@ -121,7 +120,7 @@ def make_error_map(image, dist, bias_array):
     for x in range(0, image.width):
         print("current row: " + str(x))
         for y in range (0, image.height):
-            pixel_error = int(calculate_pixel_error(pixels, x, y, dist, bias_array, image.width, image.height))
+            pixel_error = int(calculate_pixel_error(pixels, x, y, dist, dist, bias_array, image.width, image.height))
             pixel_error_array[x].insert(y, pixel_error)
 
     #find the pixel with the most / least error and set it as the max / min
