@@ -9,7 +9,7 @@ TARGET = (255, 0, 0)
 #importance of surrounding searched pixels when calculating error
 DISTANCE_BIAS = 0.1
 #radius searched around each pixel adding to its potential error
-DISTANCE = 10
+DISTANCE = 20
 
 
 def main():
@@ -42,28 +42,31 @@ def calculate_pixel_error(p, px, py, dist, bias_array, width, height):
     sum_error = 0
     individual_error = 0
 
-    for x in range(max(0, px - dist), min(int(width), px + dist)):
-        for y in range (max(0, py - dist), min(int(height), py + dist)):
-            if (math.sqrt((x - px) ** 2 + (y - py) ** 2) > dist): continue
+    surrounding_x = 0
+    surrounding_y = 0
+    for x in range(px - dist, px + dist):
+        for y in range (py - dist, py + dist):
+            surrounding_x = x
+            surrounding_y = y
+            if (x < 0):
+                surrounding_x = 0
+            elif (x > width - 1):
+                surrounding_x = width - 1
+            if (y < 0):
+                surrounding_y = 0
+            elif (y > height - 1):
+                surrounding_y = width - 1
             if (px == x and py == y):
                 individual_error = abs((abs(p[x, y][0] - TARGET[0]) +
                                             abs(p[x, y][0] - TARGET[1]) +
                                             abs(p[x, y][0] - TARGET[2])))
             else:
-                individual_error = abs(bias_array[x][y] *
-                                                (abs(p[x, y][0] - TARGET[0]) +
-                                                abs(p[x, y][0] - TARGET[1]) +
-                                                abs(p[x, y][0] - TARGET[2])) *
+                individual_error = abs(bias_array[surrounding_x][surrounding_y] *
+                                                (abs(p[surrounding_x, surrounding_y][0] - TARGET[0]) +
+                                                abs(p[surrounding_x, surrounding_y][0] - TARGET[1]) +
+                                                abs(p[surrounding_x, surrounding_y][0] - TARGET[2])) *
                                                 DISTANCE_BIAS * ((x - px) ** 2 + (y - py) ** 2) / dist)
             sum_error += individual_error
-
-            #if the pixel is around the edge, add more error
-            if (px + (px - x) > width or px - (x - px) < 0):
-                sum_error += individual_error
-            if (py + (py - y) > height or py - (y - py) < 0):
-                sum_error += individual_error
-            if ((px + (px - x) > width or px - (x - px) < 0) and (py + (py - y) > height or py - (y - py) < 0)):
-                sum_error += individual_error
 
     return sum_error
 
@@ -154,10 +157,8 @@ def make_bias_array(image, bias):
     """
     bias_array = [[0 for _ in range(image.width)] for _ in range(image.height)]
 
-    for x in range(image.width):
-        for y in range (image.height):
-            # bias_array[x].insert(y, 0.5 * (((-math.sin(abs(x - (image.width / 2)) / image.height * math.pi / 2 * bias + math.pi / 2 - math.pi / 2 * bias)) + 1) +
-            #                                 ((-math.sin(abs(y - (image.height / 2)) / image.height * math.pi / 2 * bias + math.pi / 2 - math.pi / 2 * bias)) + 1)))
+    for x in range(image.height):
+        for y in range (image.width):
             bias_array[x].insert(y, 0.5 * (
                 -(((1 - bias) / ((image.width / 2) ** 2)) * ((x - image.width / 2) ** 2) - 1) -
                 (((1 - bias) / ((image.height / 2) ** 2)) * ((y - image.height / 2) ** 2) - 1)
@@ -172,12 +173,17 @@ if __name__ == "__main__":
 """
 Bugs:
 whenever pixels near the edge are evaluated, the distortion effect reflects over the axis
-    (edged are over-accounted for)
+    (edged are over-accounted for) - x is only too great when the search is near the end (?)
 check for when a loop should be incremented by 1 at the end
 find_target_pixel does not currently work
-no distortion bias leans to "sharp edges" meaning the radius saerched may be less (?)
-    solution: add a check for distortion
+width and height swapped in multiple instances
+radius and distance bias should change proportionatlly to eachother
 
 Optimization:
 utilize numpy matrices rather than for loops
+condense and organize parameters
+
+Code that may be needed:
+if (math.sqrt((x - px) ** 2 + (y - py) ** 2) > dist): continue
+-makes the search radius a circle
 """
