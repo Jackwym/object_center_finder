@@ -1,193 +1,138 @@
-from PIL import Image
-import math
 import numpy as np
+from scipy import ndimage
+import cv2
 import time
+import threading
+import math
+START_TIME = time.time()
 
-#bias of 1 has no distortion, and 0 of maximum distortion
-DISTORTION_BIAS = 0.9
-#desired target RGB
-TARGET = (255, 0, 0)
-#importance of surrounding searched pixels when calculating error
-DISTANCE_BIAS = 0.1
-#radius searched around each pixel adding to its potential error
-DISTANCE = 5
+WHITE_CENTER = True
+width = 128
+height = 128
 
+class VideoStream:
+    def __init__(self, source=0):
+        self.cap = cv2.VideoCapture(source)
+        self.ret, self.frame = self.cap.read()
+        self.stopped = False
+        self.lock = threading.Lock()
 
-def main():
-    print("Running . . .")
-    image = Image.open("test_images/DEXI_test_2.jpg")
+        # Start the frame grabbing thread
+        threading.Thread(target=self.update, daemon=True).start()
 
-    bias_array = make_bias_array(image, DISTORTION_BIAS)
-    pixels = image.load()
-    #make_error_map(image, DISTANCE, bias_array)
-    t1 = time.time()
-    print(t1)
-    print(find_target_pixel(image, pixels, image.width, image.height, 0, 0, bias_array, [0, 0]))
-    print(time.time() - t1)
-    print("Done")
+    def update(self):
+        while not self.stopped:
+            ret, frame = self.cap.read()
+            if not ret:
+                self.stop()
+                return
 
+            with self.lock:
+                self.ret, self.frame = ret, frame
 
-def calculate_pixel_error(p, px, py, x_dist, y_dist, bias_array, width, height):
-    """
-    calculate_pixel_error finds how far from the target RGB a given pixel is,
-    accounting for the error of the surrounding pixels and distortion of the lens
+    def read(self):
+        with self.lock:
+            return self.ret, self.frame
 
-    :param p: Pixels object with all pixels in the image
-    :param px: x coordinate of the pixel
-    :param py: y coordinate of the pixel
-    :param dist: radius around each pixel that will be searched to add to that pixels error
-    :param bias_array: list of the bias values of the image due to lens distortion
-    :param width: width of the image
-    :param height: height of the imaeg
-    :return: returns an arbitrary value (error) that, when compared to other pixels,
-    demonstrates how "red" a pixel is. a higher number indicates that it has high
-    error, and is far from the target RGB values
-    """
-    sum_error = 0
-    individual_error = 0
-
-    surrounding_x = 0
-    surrounding_y = 0
-    for x in range(px - x_dist, px + x_dist):
-        for y in range (py - y_dist, py + y_dist):
-            surrounding_x = x
-            surrounding_y = y
-            if (x < 0):
-                surrounding_x = 0
-            elif (x > width - 1):
-                surrounding_x = width - 1
-            if (y < 0):
-                surrounding_y = 0
-            elif (y > height - 1):
-                surrounding_y = width - 1
-            if (px == x and py == y):
-                individual_error = abs((abs(p[surrounding_x, surrounding_y][0] - TARGET[0]) +
-                                            abs(p[surrounding_x, surrounding_y][1] - TARGET[1]) +
-                                            abs(p[surrounding_x, surrounding_y][2] - TARGET[2])))
-            else:
-                individual_error = abs(bias_array[surrounding_x][surrounding_y] *
-                                                (abs(p[surrounding_x, surrounding_y][0] - TARGET[0]) +
-                                                abs(p[surrounding_x, surrounding_y][1] - TARGET[1]) +
-                                                abs(p[surrounding_x, surrounding_y][2] - TARGET[2])) *
-                                                DISTANCE_BIAS * ((x - px) ** 2 + (y - py) ** 2) / x_dist)
-            sum_error += individual_error
-
-    return sum_error
+    def stop(self):
+        self.stopped = True
+        self.cap.release()
 
 
-def find_target_pixel(image, pixels, width, height, least_x, least_y, bias_array, prev_pixel):
-    """
-    find_target_pixel finds the pixel most denseley populated with the target RGB
-    through an algorithm closely related to a binary search
-
-    :param image: image that is to be inspected, used for a consisted width and height
-    for the calculate_pixel_error function
-    :param pixels: Pixels object with all pixels in the image
-    :param width: width of the area of the image to be inspected
-    :param height: height of the area of the image to be inspected
-    :param least_x: the lowest value x can be, or leftmost area to be searched
-    :param least_y: the lowest value y can be, or topmost area to be searched
-    :param bias_array: list of the bias values of the image due to lens distortion
-    :return: returns the pixel coordinate most densely populated with the target RGB
-    """
-    #if (width == 0 and height == 0): return (least_x, least_y)
-    left_x = least_x + int(width / 4)
-    right_x = least_x + int(width * 3 / 4)
-    top_y = least_y + int(height / 4)
-    bottom_y = least_y + int(height * 3 / 4)
-    least_error_location = [0, 0]
-    top_left_error = calculate_pixel_error(pixels, int(left_x), int(top_y), int(width / 2), int(height / 2), bias_array, image.width, image.height)
-    top_right_error = calculate_pixel_error(pixels, int(right_x), int(top_y), int(width / 2), int(height / 2), bias_array, image.width, image.height)
-    bottom_left_error = calculate_pixel_error(pixels, int(left_x), int(bottom_y), int(width / 2), int(height / 2), bias_array, image.width, image.height)
-    if (top_left_error > top_right_error):
-        least_error_location[0] = 1
-    if (top_left_error > bottom_left_error):
-        least_error_location[1] = 1
-    if (prev_pixel[0] == least_error_location[0] and prev_pixel[0] == least_error_location[0]): return (least_x, least_y)
-    return find_target_pixel(image, pixels, int(width), int(height), int(least_x + width / 2 * least_error_location[0]), int(least_y + height / 2 * least_error_location[1]), bias_array, least_error_location)
+def get_frame_redness_data(array):
+    # Iterate over the pixels and get the redness value of each pixel
+    redness_vals = [
+        # redness values will be from 0 to 510, with 510 being the most red
+        ((array[h, w][0] * 2) - array[h, w][1]) - array[h, w][2]
+        for h in range(height)
+        for w in range(width)
+    ]
+    return redness_vals
 
 
-def make_error_map(image, dist, bias_array):
-    """
-    make_error_map creates an image with every pixels error represented
-    on a grey scale and saves it to the results folder
+def make_redness_frame(red_vals, target_pixel):
+        # Normalize the redness values to a range of [0, 255]
+    least_red = min(red_vals)
+    most_red = max(red_vals)
 
-    :param image: image that is to be inspected
-    :param dist: radius around each pixel that will be searched to add to that pixels error
-    :param bias_array: list of the bias values of the image due to lens distortion
-    """
-    pixels = image.load()
-    max_error = 0
-    pixel_error_array = [[0 for _ in range(image.width)] for _ in range(image.height)]
+    # Avoid division by zero if all values are the same
+    if most_red - least_red == 0:
+        normalized_pixels = np.full_like(red_vals, 255, dtype=np.uint8)  # All values will map to 255 if there's no range
+    else:
+        normalized_pixels = np.clip(((np.array(red_vals) - least_red) / (most_red - least_red) * 255), 0, 255).astype(np.uint8)
 
-    #find error of each pixel individually
-    pixel_error = 0
-    for x in range(0, image.width):
-        print("current row: " + str(x))
-        for y in range (0, image.height):
-            pixel_error = int(calculate_pixel_error(pixels, x, y, dist, dist, bias_array, image.width, image.height))
-            pixel_error_array[x].insert(y, pixel_error)
+    # Reshape normalized pixels to match the image shape (height, width)
+    normalized_pixels = normalized_pixels.reshape((height, width))
 
-    #find the pixel with the most / least error and set it as the max / min
-    min_error = pixel_error_array[0][0]
-    max_error = pixel_error_array[0][0]
-    for x in range(0, image.width):
-        for y in range (0, image.height):
-            if (pixel_error_array[x][y] > max_error):
-                max_error = pixel_error_array[x][y]
-            if (pixel_error_array[x][y] < min_error):
-                min_error = pixel_error_array[x][y]
+    # Create a blank image (height, width, 3) to hold RGB values
+    img_data = np.zeros((height, width, 3), dtype=np.uint8)
 
-    #divide each error by the max and multiply by 255 in order to display the error as an image
-    for x in range(0, int(image.width)):
-        for y in range (0, int(image.height)):
-            pixels[x, y] = (int((pixel_error_array[x][y] - min_error) / (max_error - min_error) * 255),
-                            int((pixel_error_array[x][y] - min_error) / (max_error - min_error) * 255),
-                            int((pixel_error_array[x][y] - min_error) / (max_error - min_error) * 255))
+    # Apply the gradient: [value, 0, 255 - value]
+    img_data[:, :, 0] = normalized_pixels  # Red channel
+    img_data[:, :, 1] = 0  # Green channel (always 0)
+    img_data[:, :, 2] = 255 - normalized_pixels  # Blue channel
 
-    image.save("results/error_map6.jpg")
-    image.show()
+    # Set the center pixel to white if required
+    if WHITE_CENTER:
+        img_data[target_pixel[1], target_pixel[0]] = [255, 255, 255]
+
+    return img_data
 
 
-def make_bias_array(image, bias):
-    """
-    make_bias_array creates an array representing the distortion of an image due
-    to the lens
+def find_redness_center(red_vals) -> tuple[int, ...]:
+    redness_array = np.array(red_vals).reshape(width, height).T
+    redness_grid = redness_array.tolist()
 
-    :param image: image that is to be inspected
-    :param bias: how distorted the lens is on a scale of 0-1
-    :return: returns an array with each value on a scale of 0-1, representing
-    how distorted those pixels would be (0 being regular and 1 being distorted)
-    """
-    bias_array = [[0 for _ in range(image.width)] for _ in range(image.height)]
+    BOUNDS = (100, 510) # Acceptable bounds for the redness values, i.e. if something doesn't have at least 100 redness score then it doesn't make the cut
 
-    for x in range(image.height):
-        for y in range (image.width):
-            bias_array[x].insert(y, 0.5 * (
-                -(((1 - bias) / ((image.width / 2) ** 2)) * ((x - image.width / 2) ** 2) - 1) -
-                (((1 - bias) / ((image.height / 2) ** 2)) * ((y - image.height / 2) ** 2) - 1)
-            ))
+    img = np.array(redness_grid)  # Convert redness grid to numpy array
+    lowerb = np.array(BOUNDS[0])  # lowest allowed red pixel value
+    upperb = np.array(BOUNDS[1])  # highest allowed red pixel value
 
-    return bias_array
+    mask = cv2.inRange(img, lowerb, upperb)  # Create mask of pixels within the pixel threshold
+
+    if np.all(mask == 0):  # If no pixels are within the pixel threshold, exit
+        return (int(width / 2 + (20 * math.cos(time.time()))), int(height / 2))
+
+    blobs = mask > 100  # Identify blobs in the mask & label the
+    labels, nlabels = ndimage.label(blobs) # type: ignore
+
+    centers_of_mass = ndimage.center_of_mass(mask, labels, np.arange(nlabels) + 1)  # Find centers of mass
+    blob_sizes = ndimage.sum(blobs, labels, np.arange(nlabels) + 1)  # Calculate size of each blob
+    redness_center = tuple(int(coord) for coord in centers_of_mass[blob_sizes.argmax()][::-1])  # Find largest blob's center (x,y)
+
+    print(f"Redness center: {redness_center}")
+    return redness_center
 
 
 if __name__ == "__main__":
-    main()
+    # Initialize video stream
+    video_stream = VideoStream(0)
 
-"""
-Bugs:
-whenever pixels near the edge are evaluated, the distortion effect reflects over the axis
-    (edged are over-accounted for) - x is only too great when the search is near the end (?)
-check for when a loop should be incremented by 1 at the end
-find_target_pixel does not currently work
-width and height swapped in multiple instances
-radius and distance bias should change proportionatlly to eachother
+    while True:
+        ret, frame = video_stream.read()
 
-Optimization:
-utilize numpy matrices rather than for loops
-condense and organize parameters
+        if not ret:
+            print("Error: Could not read frame.")
+            continue
 
-Code that may be needed:
-if (math.sqrt((x - px) ** 2 + (y - py) ** 2) > dist): continue
--makes the search radius a circle
-"""
+        frame = frame.astype("float32")
+
+        frame = cv2.resize(frame, (128, 128))
+
+        redness_vals = get_frame_redness_data(frame)
+        redness_center = find_redness_center(redness_vals)
+        new_frame = make_redness_frame(redness_vals, redness_center)
+
+        new_frame = cv2.resize(new_frame, (512, 512))
+        new_frame = new_frame.astype("uint8")
+        cv2.imshow("Live Video - Most Recent Modified Frame", new_frame)
+
+        # Exit on 'q' key press
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    video_stream.stop()
+    cv2.destroyAllWindows()
+
+    print(f"Execution time: {time.time() - START_TIME:.2f} seconds")
